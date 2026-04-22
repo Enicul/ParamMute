@@ -7,12 +7,12 @@ import argparse
 from rouge import Rouge
 from tqdm import tqdm
 import os
-import sys
 import torch
 from collections import Counter
 import logging
 
 import types
+# Use system transformers (supports qwen2_5_vl) — local ParamMute transformers is too old
 from transformers import AutoProcessor, AutoModelForCausalLM
 
 
