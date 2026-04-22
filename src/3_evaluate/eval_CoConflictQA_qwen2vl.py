@@ -13,7 +13,7 @@ import logging
 
 import types
 # Use system transformers (supports qwen2_5_vl) — local ParamMute transformers is too old
-from transformers import AutoProcessor, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
 def apply_ffn_suppression(model, inhibit_strength: float, inhibit_layer_list: list):
@@ -127,7 +127,7 @@ def eval_step(parametric_answers, pred_answers, gold_answers, step):
     return acc, pm_acc, mr, em
 
 
-def build_prompt(query, context, schema, processor, use_chat_template):
+def build_prompt(query, context, schema, tokenizer, use_chat_template):
     if schema == 'base_wo_context':
         text = f'Q: {query}\nA: '
     elif schema == 'base':
@@ -147,7 +147,7 @@ def build_prompt(query, context, schema, processor, use_chat_template):
 
     if use_chat_template:
         messages = [{'role': 'user', 'content': text}]
-        text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     return text
 
 
@@ -179,9 +179,7 @@ def main():
     logging.info(f'inhibit_strength={args.act_inhibit_ratio}, layers={args.act_inhibit_layer_list}')
     logging.info(f'schema={args.schema}, use_chat_template={args.use_chat_template}')
 
-    processor = AutoProcessor.from_pretrained(args.model_name, trust_remote_code=True)
-    # AutoProcessor may return a full processor or just a tokenizer depending on transformers version
-    tokenizer = processor.tokenizer if hasattr(processor, 'tokenizer') else processor
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
 
     model = AutoModelForCausalLM.from_pretrained(
@@ -202,7 +200,7 @@ def main():
     input_ids_list = []
     for d in data:
         prompt = build_prompt(
-            d['question'], d['context'], args.schema, processor, args.use_chat_template
+            d['question'], d['context'], args.schema, tokenizer, args.use_chat_template
         )
         input_ids_list.append(
             tokenizer(prompt, return_tensors='pt').input_ids.to(model.device)
