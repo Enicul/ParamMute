@@ -17,8 +17,23 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'transformers',
 
 from transformers import AutoProcessor, AutoConfig
 from transformers.models.qwen2_vl.modeling_qwen2_vl import (
-    Qwen2VLForConditionalGeneration_w_act_inhibit,
+    Qwen2VLForConditionalGeneration,
+    Qwen2VLMLP_w_act_inhibit,
 )
+
+
+def apply_ffn_suppression(model, inhibit_strength: float, inhibit_layer_list: list):
+    """Load standard model weights then swap MLP at target layers — avoids from_pretrained shape issues."""
+    if inhibit_strength == 1.0:
+        return model  # no-op for baseline
+    for layer_idx in inhibit_layer_list:
+        layer = model.model.layers[layer_idx]
+        new_mlp = Qwen2VLMLP_w_act_inhibit(model.config, inhibit_strength)
+        new_mlp.load_state_dict(layer.mlp.state_dict())
+        new_mlp = new_mlp.to(layer.mlp.gate_proj.weight.device).to(layer.mlp.gate_proj.weight.dtype)
+        layer.mlp = new_mlp
+        print(f"[ParamMute] Layer {layer_idx} MLP suppressed (strength={inhibit_strength})")
+    return model
 
 print('=' * 20 + f' GPUs: {torch.cuda.device_count()} ' + '=' * 20)
 
@@ -168,15 +183,14 @@ def main():
     tokenizer = processor.tokenizer if hasattr(processor, 'tokenizer') else processor
     tokenizer.pad_token = tokenizer.eos_token
 
-    model = Qwen2VLForConditionalGeneration_w_act_inhibit.from_pretrained(
+    model = Qwen2VLForConditionalGeneration.from_pretrained(
         args.model_name,
-        inhibit_strength=args.act_inhibit_ratio,
-        inhibit_layer_list=args.act_inhibit_layer_list,
         device_map='auto',
         low_cpu_mem_usage=True,
         torch_dtype=torch.bfloat16,
         trust_remote_code=True,
     )
+    model = apply_ffn_suppression(model, args.act_inhibit_ratio, args.act_inhibit_layer_list)
     model.eval()
 
     with jsonlines.open(args.data_path, 'r') as reader:
