@@ -13,7 +13,8 @@ import logging
 
 import types
 # Use system transformers (supports qwen2_5_vl) — local ParamMute transformers is too old
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer
+from transformers import Qwen2_5_VLForConditionalGeneration
 
 
 def apply_ffn_suppression(model, inhibit_strength: float, inhibit_layer_list: list):
@@ -182,12 +183,11 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
+    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         args.model_name,
         device_map='auto',
         low_cpu_mem_usage=True,
-        torch_dtype=torch.bfloat16,
-        trust_remote_code=True,
+        dtype=torch.bfloat16,
     )
     model = apply_ffn_suppression(model, args.act_inhibit_ratio, args.act_inhibit_layer_list)
     model.eval()
