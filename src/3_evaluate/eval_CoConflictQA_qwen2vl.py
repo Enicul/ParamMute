@@ -33,14 +33,14 @@ def str2bool(value):
     raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
-def call_model(model, processor, input_ids, max_new_tokens):
+def call_model(model, tokenizer, input_ids, max_new_tokens):
     with torch.inference_mode():
         out = model.generate(
             input_ids,
             max_new_tokens=max_new_tokens,
-            pad_token_id=processor.tokenizer.eos_token_id,
+            pad_token_id=tokenizer.eos_token_id,
         )[0, input_ids.shape[-1]:]
-    return processor.tokenizer.decode(out, skip_special_tokens=True).strip()
+    return tokenizer.decode(out, skip_special_tokens=True).strip()
 
 
 def normalize_answer(s):
@@ -164,7 +164,9 @@ def main():
     logging.info(f'schema={args.schema}, use_chat_template={args.use_chat_template}')
 
     processor = AutoProcessor.from_pretrained(args.model_name, trust_remote_code=True)
-    processor.tokenizer.pad_token = processor.tokenizer.eos_token
+    # AutoProcessor may return a full processor or just a tokenizer depending on transformers version
+    tokenizer = processor.tokenizer if hasattr(processor, 'tokenizer') else processor
+    tokenizer.pad_token = tokenizer.eos_token
 
     model = Qwen2VLForConditionalGeneration_w_act_inhibit.from_pretrained(
         args.model_name,
@@ -188,7 +190,7 @@ def main():
             d['question'], d['context'], args.schema, processor, args.use_chat_template
         )
         input_ids_list.append(
-            processor.tokenizer(prompt, return_tensors='pt').input_ids.to(model.device)
+            tokenizer(prompt, return_tensors='pt').input_ids.to(model.device)
         )
 
     gold_answers, pred_answers, pm_answers = [], [], []
@@ -196,7 +198,7 @@ def main():
         gold_answers.append(d['answers'])
         pm_answers.append(d['parametric_answer'])
 
-        pred = call_model(model, processor, input_ids_list[idx], args.max_new_tokens)
+        pred = call_model(model, tokenizer, input_ids_list[idx], args.max_new_tokens)
         pred_answers.append(pred)
         d['pred'] = pred
 
