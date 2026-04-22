@@ -12,26 +12,27 @@ import torch
 from collections import Counter
 import logging
 
-# Use the local modified transformers
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'transformers', 'src'))
-
-from transformers import AutoProcessor, AutoConfig
-from transformers.models.qwen2_vl.modeling_qwen2_vl import (
-    Qwen2VLForConditionalGeneration,
-    Qwen2VLMLP_w_act_inhibit,
-)
+import types
+from transformers import AutoProcessor, AutoModelForCausalLM
 
 
 def apply_ffn_suppression(model, inhibit_strength: float, inhibit_layer_list: list):
-    """Load standard model weights then swap MLP at target layers — avoids from_pretrained shape issues."""
+    """Monkey-patch MLP forward at target layers — works with any model loaded via trust_remote_code."""
     if inhibit_strength == 1.0:
         return model  # no-op for baseline
     for layer_idx in inhibit_layer_list:
-        layer = model.model.layers[layer_idx]
-        new_mlp = Qwen2VLMLP_w_act_inhibit(model.config, inhibit_strength)
-        new_mlp.load_state_dict(layer.mlp.state_dict())
-        new_mlp = new_mlp.to(layer.mlp.gate_proj.weight.device).to(layer.mlp.gate_proj.weight.dtype)
-        layer.mlp = new_mlp
+        mlp = model.model.layers[layer_idx].mlp
+        orig_forward = mlp.forward
+
+        def make_patched(orig, strength):
+            def patched(x):
+                return orig(x) * strength
+            return patched
+
+        mlp.forward = types.MethodType(
+            lambda self, x, _f=make_patched(orig_forward, inhibit_strength): _f(x),
+            mlp
+        )
         print(f"[ParamMute] Layer {layer_idx} MLP suppressed (strength={inhibit_strength})")
     return model
 
@@ -183,7 +184,7 @@ def main():
     tokenizer = processor.tokenizer if hasattr(processor, 'tokenizer') else processor
     tokenizer.pad_token = tokenizer.eos_token
 
-    model = Qwen2VLForConditionalGeneration.from_pretrained(
+    model = AutoModelForCausalLM.from_pretrained(
         args.model_name,
         device_map='auto',
         low_cpu_mem_usage=True,
