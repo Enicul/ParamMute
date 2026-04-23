@@ -43,18 +43,6 @@ def apply_ffn_suppression(model, inhibit_strength: float, inhibit_layer_list: li
     if not patched:
         raise RuntimeError(f"No MLP modules found for layers {inhibit_layer_list}. Check model structure.")
     print(f"[ParamMute] Suppressed (strength={inhibit_strength}): {patched}")
-        orig_forward = mlp.forward
-
-        def make_patched(orig, strength):
-            def patched(x):
-                return orig(x) * strength
-            return patched
-
-        mlp.forward = types.MethodType(
-            lambda self, x, _f=make_patched(orig_forward, inhibit_strength): _f(x),
-            mlp
-        )
-        print(f"[ParamMute] Layer {layer_idx} MLP suppressed (strength={inhibit_strength})")
     return model
 
 print('=' * 20 + f' GPUs: {torch.cuda.device_count()} ' + '=' * 20)
