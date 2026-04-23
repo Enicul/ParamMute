@@ -17,29 +17,32 @@ from transformers import AutoTokenizer
 from transformers import Qwen2_5_VLForConditionalGeneration
 
 
-def get_decoder_layers(model):
-    """Find decoder layers across different Qwen2.5-VL model structures."""
-    for fn in [
-        lambda m: m.model.layers,
-        lambda m: m.model.model.layers,
-        lambda m: m.language_model.model.layers,
-    ]:
-        try:
-            layers = fn(model)
-            if layers is not None:
-                return layers
-        except AttributeError:
-            continue
-    raise AttributeError("Cannot find decoder layers — print model structure to debug")
-
-
 def apply_ffn_suppression(model, inhibit_strength: float, inhibit_layer_list: list):
-    """Monkey-patch MLP forward at target layers — works with any model loaded via trust_remote_code."""
+    """Patch MLP forward by scanning named_modules — robust to any VL model structure."""
     if inhibit_strength == 1.0:
         return model  # no-op for baseline
-    layers = get_decoder_layers(model)
-    for layer_idx in inhibit_layer_list:
-        mlp = layers[layer_idx].mlp
+    patched = []
+    for name, module in model.named_modules():
+        parts = name.split('.')
+        # Match e.g. "model.layers.12.mlp" or "model.model.layers.12.mlp"
+        if parts[-1] == 'mlp' and len(parts) >= 2 and parts[-2].isdigit():
+            layer_idx = int(parts[-2])
+            if layer_idx in inhibit_layer_list:
+                orig_forward = module.forward
+
+                def make_patched(orig, strength):
+                    def patched(x):
+                        return orig(x) * strength
+                    return patched
+
+                module.forward = types.MethodType(
+                    lambda self, x, _f=make_patched(orig_forward, inhibit_strength): _f(x),
+                    module
+                )
+                patched.append(f"{name} (layer {layer_idx})")
+    if not patched:
+        raise RuntimeError(f"No MLP modules found for layers {inhibit_layer_list}. Check model structure.")
+    print(f"[ParamMute] Suppressed (strength={inhibit_strength}): {patched}")
         orig_forward = mlp.forward
 
         def make_patched(orig, strength):
