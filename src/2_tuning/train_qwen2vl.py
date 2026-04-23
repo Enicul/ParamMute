@@ -28,12 +28,28 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # ── Suppression ───────────────────────────────────────────────────────────────
 
+def get_decoder_layers(model):
+    for fn in [
+        lambda m: m.model.layers,
+        lambda m: m.model.model.layers,
+        lambda m: m.language_model.model.layers,
+    ]:
+        try:
+            layers = fn(model)
+            if layers is not None:
+                return layers
+        except AttributeError:
+            continue
+    raise AttributeError("Cannot find decoder layers — print model structure to debug")
+
+
 def apply_ffn_suppression(model, inhibit_strength: float, inhibit_layer_list: list):
     if inhibit_strength >= 1.0:
         logger.info("inhibit_strength=1.0, no suppression applied (baseline).")
         return model
+    layers = get_decoder_layers(model)
     for layer_idx in inhibit_layer_list:
-        mlp = model.model.layers[layer_idx].mlp
+        mlp = layers[layer_idx].mlp
         orig_forward = mlp.forward
 
         def make_patched(orig, strength):
