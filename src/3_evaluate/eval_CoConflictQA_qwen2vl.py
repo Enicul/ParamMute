@@ -19,31 +19,24 @@ from peft import PeftModel
 
 
 def apply_ffn_suppression(model, inhibit_strength: float, inhibit_layer_list: list):
-    """Patch MLP forward by scanning named_modules — robust to any VL model structure."""
+    """Patch language model MLP forward at target layers. Path: model.model.language_model.layers"""
     if inhibit_strength == 1.0:
         return model  # no-op for baseline
-    patched = []
-    for name, module in model.named_modules():
-        parts = name.split('.')
-        # Match language model layers only (skip vision encoder blocks)
-        if parts[-1] == 'mlp' and len(parts) >= 2 and parts[-2].isdigit() and 'visual' not in name:
-            layer_idx = int(parts[-2])
-            if layer_idx in inhibit_layer_list:
-                orig_forward = module.forward
+    lm_layers = model.model.language_model.layers
+    for layer_idx in inhibit_layer_list:
+        mlp = lm_layers[layer_idx].mlp
+        orig_forward = mlp.forward
 
-                def make_patched(orig, strength):
-                    def patched(x):
-                        return orig(x) * strength
-                    return patched
+        def make_patched(orig, strength):
+            def patched(x):
+                return orig(x) * strength
+            return patched
 
-                module.forward = types.MethodType(
-                    lambda self, x, _f=make_patched(orig_forward, inhibit_strength): _f(x),
-                    module
-                )
-                patched.append(f"{name} (layer {layer_idx})")
-    if not patched:
-        raise RuntimeError(f"No MLP modules found for layers {inhibit_layer_list}. Check model structure.")
-    print(f"[ParamMute] Suppressed (strength={inhibit_strength}): {patched}")
+        mlp.forward = types.MethodType(
+            lambda self, x, _f=make_patched(orig_forward, inhibit_strength): _f(x),
+            mlp
+        )
+        print(f"[ParamMute] Layer {layer_idx} LM MLP suppressed (strength={inhibit_strength})")
     return model
 
 print('=' * 20 + f' GPUs: {torch.cuda.device_count()} ' + '=' * 20)

@@ -32,27 +32,21 @@ def apply_ffn_suppression(model, inhibit_strength: float, inhibit_layer_list: li
     if inhibit_strength >= 1.0:
         logger.info("inhibit_strength=1.0, no suppression applied (baseline).")
         return model
-    patched = []
-    for name, module in model.named_modules():
-        parts = name.split('.')
-        if parts[-1] == 'mlp' and len(parts) >= 2 and parts[-2].isdigit() and 'visual' not in name:
-            layer_idx = int(parts[-2])
-            if layer_idx in inhibit_layer_list:
-                orig_forward = module.forward
+    lm_layers = model.model.language_model.layers
+    for layer_idx in inhibit_layer_list:
+        mlp = lm_layers[layer_idx].mlp
+        orig_forward = mlp.forward
 
-                def make_patched(orig, strength):
-                    def patched(x):
-                        return orig(x) * strength
-                    return patched
+        def make_patched(orig, strength):
+            def patched(x):
+                return orig(x) * strength
+            return patched
 
-                module.forward = types.MethodType(
-                    lambda self, x, _f=make_patched(orig_forward, inhibit_strength): _f(x),
-                    module
-                )
-                patched.append(f"{name} (layer {layer_idx})")
-    if not patched:
-        raise RuntimeError(f"No MLP modules found for layers {inhibit_layer_list}")
-    logger.info(f"Suppressed (strength={inhibit_strength}): {patched}")
+        mlp.forward = types.MethodType(
+            lambda self, x, _f=make_patched(orig_forward, inhibit_strength): _f(x),
+            mlp
+        )
+        logger.info(f"Layer {layer_idx} LM MLP suppressed (strength={inhibit_strength})")
     return model
 
 
