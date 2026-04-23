@@ -35,7 +35,7 @@ def apply_ffn_suppression(model, inhibit_strength: float, inhibit_layer_list: li
     patched = []
     for name, module in model.named_modules():
         parts = name.split('.')
-        if parts[-1] == 'mlp' and len(parts) >= 2 and parts[-2].isdigit():
+        if parts[-1] == 'mlp' and len(parts) >= 2 and parts[-2].isdigit() and 'visual' not in name:
             layer_idx = int(parts[-2])
             if layer_idx in inhibit_layer_list:
                 orig_forward = module.forward
@@ -53,18 +53,6 @@ def apply_ffn_suppression(model, inhibit_strength: float, inhibit_layer_list: li
     if not patched:
         raise RuntimeError(f"No MLP modules found for layers {inhibit_layer_list}")
     logger.info(f"Suppressed (strength={inhibit_strength}): {patched}")
-        orig_forward = mlp.forward
-
-        def make_patched(orig, strength):
-            def patched(x):
-                return orig(x) * strength
-            return patched
-
-        mlp.forward = types.MethodType(
-            lambda self, x, _f=make_patched(orig_forward, inhibit_strength): _f(x),
-            mlp
-        )
-        logger.info(f"Layer {layer_idx} MLP suppressed (strength={inhibit_strength})")
     return model
 
 

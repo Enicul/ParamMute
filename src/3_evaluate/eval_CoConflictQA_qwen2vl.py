@@ -24,8 +24,8 @@ def apply_ffn_suppression(model, inhibit_strength: float, inhibit_layer_list: li
     patched = []
     for name, module in model.named_modules():
         parts = name.split('.')
-        # Match e.g. "model.layers.12.mlp" or "model.model.layers.12.mlp"
-        if parts[-1] == 'mlp' and len(parts) >= 2 and parts[-2].isdigit():
+        # Match language model layers only (skip vision encoder blocks)
+        if parts[-1] == 'mlp' and len(parts) >= 2 and parts[-2].isdigit() and 'visual' not in name:
             layer_idx = int(parts[-2])
             if layer_idx in inhibit_layer_list:
                 orig_forward = module.forward
