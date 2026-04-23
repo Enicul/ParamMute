@@ -15,6 +15,7 @@ import types
 # Use system transformers (supports qwen2_5_vl) — local ParamMute transformers is too old
 from transformers import AutoTokenizer
 from transformers import Qwen2_5_VLForConditionalGeneration
+from peft import PeftModel
 
 
 def apply_ffn_suppression(model, inhibit_strength: float, inhibit_layer_list: list):
@@ -174,6 +175,8 @@ def main():
                         help='FFN suppression strength (0=full suppress, 1=no-op). Default 0.5.')
     parser.add_argument('--act_inhibit_layer_list', type=int, nargs='+', default=[12],
                         help='Decoder layer indices to suppress. Default [12] (best TPC layer).')
+    parser.add_argument('--lora_path', default=None, type=str,
+                        help='Path to LoRA adapter checkpoint. If None, runs without LoRA.')
     args = parser.parse_args()
 
     os.makedirs(os.path.dirname(args.log_path), exist_ok=True)
@@ -186,6 +189,7 @@ def main():
 
     logging.info(f'Model: {args.model_name}')
     logging.info(f'inhibit_strength={args.act_inhibit_ratio}, layers={args.act_inhibit_layer_list}')
+    logging.info(f'lora_path={args.lora_path}')
     logging.info(f'schema={args.schema}, use_chat_template={args.use_chat_template}')
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, trust_remote_code=True)
@@ -198,6 +202,9 @@ def main():
         dtype=torch.bfloat16,
     )
     model = apply_ffn_suppression(model, args.act_inhibit_ratio, args.act_inhibit_layer_list)
+    if args.lora_path:
+        model = PeftModel.from_pretrained(model, args.lora_path)
+        logging.info(f'LoRA adapter loaded from {args.lora_path}')
     model.eval()
 
     with jsonlines.open(args.data_path, 'r') as reader:

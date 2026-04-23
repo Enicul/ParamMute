@@ -54,6 +54,32 @@ for DS in "${DATASETS[@]}"; do
     echo "Done: $NAME"
 done
 
+# ── LoRA + suppression: layer 12, lambda=0.5 ─────────────────────────────────
+LORA_CKPT=./checkpoints/qwen2vl_lora_layer12_lambda0.5
+
+if [ -d "$LORA_CKPT" ]; then
+    echo "========================================"
+    echo "LORA + SUPPRESSED (layer 12, lambda=0.5)"
+    echo "========================================"
+
+    for DS in "${DATASETS[@]}"; do
+        NAME="${DS%.jsonl}"
+        echo "--- LoRA+Suppressed: $NAME ---"
+        CUDA_VISIBLE_DEVICES=2 python $SCRIPT \
+            --model_name $MODEL \
+            --data_path $DATA_DIR/$DS \
+            --act_inhibit_ratio 0.5 \
+            --act_inhibit_layer_list 12 \
+            --lora_path $LORA_CKPT \
+            --schema instr \
+            --output_path ./results/eval/qwen2vl_lora_layer12_lambda0.5/$DS \
+            --log_path ./results/eval/qwen2vl_lora_layer12_lambda0.5/${NAME}.log
+        echo "Done: $NAME"
+    done
+else
+    echo "No LoRA checkpoint found at $LORA_CKPT — skipping LoRA eval."
+fi
+
 echo "========================================"
 echo "All evaluations complete."
 echo "Results in ./results/eval/"
