@@ -21,7 +21,7 @@ CUDA_VISIBLE_DEVICES=2 python src/2_tuning/train_qwen2vl.py \
     --output_dir $OUTPUT_DIR \
     --per_device_train_batch_size 2 \
     --gradient_accumulation_steps 8 \
-    --num_train_epochs 3 \
+    --num_train_epochs 1 \
     --learning_rate 1e-4 \
     --lr_scheduler_type cosine \
     --warmup_ratio 0.1 \
