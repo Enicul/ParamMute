@@ -4,3 +4,6 @@ checkpoints/
 output/
 results/
 *.log
+data/CoConflictQA/
+data/train/
+data/func_data/activations/
